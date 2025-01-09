@@ -4,16 +4,16 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: {{ .Release.Name }}-m2t
+  name: {{ include "nginx.fullname" . }}
   labels:
-    {{- include "docsum.labels" . | nindent 4 }}
-    app: {{ .Release.Name }}-m2t
+    {{- include "nginx.labels" . | nindent 4 }}
 spec:
+  {{- if ne (int .Values.replicaCount) 1 }}
   replicas: {{ .Values.replicaCount }}
+  {{- end }}
   selector:
     matchLabels:
-      {{- include "docsum.selectorLabels" . | nindent 6 }}
-      app: {{ .Release.Name }}-m2t
+      {{- include "nginx.selectorLabels" . | nindent 6 }}
   template:
     metadata:
       {{- with .Values.podAnnotations }}
@@ -21,41 +21,56 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       labels:
-        {{- include "docsum.selectorLabels" . | nindent 8 }}
-        app: {{ .Release.Name }}-m2t
+        {{- include "nginx.labels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
       {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      serviceAccountName: {{ include "docsum.serviceAccountName" . }}
+      serviceAccountName: {{ include "nginx.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
       containers:
-        - name: {{ .Release.Name }}-m2t
-          env:
-            - name: V2A_ENDPOINT
-              value: {{ .Release.Name }}-v2a:{{ .Values.v2a.service.port }}
-            - name: A2T_ENDPOINT
-              value: {{ .Release.Name }}-whisper:{{ .Values.whisper.service.port }}
+        - name: {{ .Chart.Name }}
+          envFrom:
+            - configMapRef:
+                name: {{ .Release.Name }}-nginx-config
+                optional: true
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
-          image: "{{ .Values.m2t.image.repository }}:{{ .Values.m2t.image.tag | default .Chart.AppVersion }}"
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           {{- if .Values.image.pullPolicy }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           {{- end }}
-          volumeMounts:
-            - mountPath: /tmp
-              name: tmp
           ports:
-            - name: m2t
-              containerPort: {{ .Values.m2t.port }}
+            - name: nginx
+              containerPort: {{ .Values.service.port }}
               protocol: TCP
+          {{- if .Values.livenessProbe }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.readinessProbe }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          {{- end }}
+          {{- if .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml .Values.startupProbe | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.volumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.volumes }}
       volumes:
-        - name: tmp
-          emptyDir: {}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
@@ -75,23 +90,5 @@ spec:
           whenUnsatisfiable: ScheduleAnyway
           labelSelector:
             matchLabels:
-              {{- include "docsum.selectorLabels" . | nindent 14 }}
-              app: {{ .Release.Name }}-m2t
+              {{- include "nginx.selectorLabels" . | nindent 14 }}
       {{- end }}
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: {{ .Release.Name }}-m2t
-  labels:
-    {{- include "docsum.labels" . | nindent 4 }}
-spec:
-  type: {{ .Values.m2t.service.type }}
-  ports:
-    - port: {{ .Values.m2t.service.port }}
-      targetPort: {{ .Values.m2t.port }}
-      protocol: TCP
-      name: m2t
-  selector:
-    {{- include "docsum.selectorLabels" . | nindent 4 }}
-    app: {{ .Release.Name }}-m2t
